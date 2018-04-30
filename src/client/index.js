@@ -9,7 +9,6 @@ import Cookie from 'js-cookie';
 import steemConnectAPI from './steemConnectAPI';
 import { history } from './routes';
 import getStore from './store';
-import { loadTranslations } from './translations';
 import AppHost from './AppHost';
 
 Logger.useDefaults();
@@ -30,9 +29,7 @@ message.config({
   duration: 3,
 });
 
-const render = async Component => {
-  await loadTranslations(store);
-
+const render = Component => {
   ReactDOM.hydrate(
     <Provider store={store}>
       {process.env.NODE_ENV !== 'production' ? (

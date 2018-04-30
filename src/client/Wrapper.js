@@ -7,7 +7,7 @@ import { withRouter } from 'react-router-dom';
 import { renderRoutes } from 'react-router-config';
 import { LocaleProvider, Layout } from 'antd';
 import enUS from 'antd/lib/locale-provider/en_US';
-import { getAvailableLocale, getTranslationsByLocale, getLocaleDirection } from './translations';
+import { findLanguage } from './translations';
 import {
   getIsLoaded,
   getAuthenticatedUser,
@@ -29,6 +29,7 @@ import {
 import * as reblogActions from './app/Reblog/reblogActions';
 import busyAPI from './busyAPI';
 import Redirect from './components/Utils/Redirect';
+import Loading from './components/Icon/Loading';
 import NotificationPopup from './notifications/NotificationPopup';
 import Topnav from './components/Navigation/Topnav';
 import Transfer from './wallet/Transfer';
@@ -112,24 +113,38 @@ export default class Wrapper extends React.PureComponent {
       return;
     }
 
-    const locale = getLocale(state);
+    const languages = req
+      .get('Accept-Language')
+      .split(',')
+      .map(lang => lang.split(';')[0]);
 
-    await Wrapper.loadLocaleData(locale);
+    const id = await Wrapper.loadLanguage(languages[0]);
 
-    store.dispatch(setUsedLocale(getAvailableLocale(locale)));
+    if (!id) {
+      return;
+    }
+
+    store.dispatch(setUsedLocale(id));
   }
 
-  static async loadLocaleData(locale) {
-    const availableLocale = getAvailableLocale(locale);
-    const translationsLocale = getTranslationsByLocale(locale);
+  static async loadLanguage(locale) {
+    const language = findLanguage(locale);
 
-    const localeDataPromise = import(`react-intl/locale-data/${availableLocale}`);
-    const translationsPromise = import(`./locales/${translationsLocale}.json`);
+    if (!language) {
+      return null;
+    }
+
+    const localeDataPromise = import(`react-intl/locale-data/${language.localeData}`);
+    const translationsPromise = import(`./locales/${language.translations}`);
 
     const [localeData, translations] = await Promise.all([localeDataPromise, translationsPromise]);
 
+    console.log('lodaleData', localeData);
+
     addLocaleData(localeData);
     global.translations = translations;
+
+    return language.id;
   }
 
   constructor(props) {
@@ -140,7 +155,7 @@ export default class Wrapper extends React.PureComponent {
   }
 
   componentDidMount() {
-    const { loaded, locale, usedLocale } = this.props;
+    const { locale } = this.props;
 
     this.props.login().then(() => {
       this.props.getFollowing();
@@ -153,26 +168,26 @@ export default class Wrapper extends React.PureComponent {
     this.props.getRate();
     this.props.getTrendingTopics();
 
-    if (usedLocale !== getAvailableLocale(locale) && loaded) {
-      this.loadLocale(locale);
-    }
-
     busyAPI.subscribe(this.props.busyAPIHandler);
+
+    this.loadLocale(locale);
   }
 
   componentWillReceiveProps(nextProps) {
-    const { usedLocale } = this.props;
+    const { locale } = this.props;
 
-    if (usedLocale !== getAvailableLocale(nextProps.locale) && nextProps.loaded) {
-      this.loadLocale(nextProps.locale);
-    } else if (nextProps.locale !== this.props.locale) {
+    if (locale !== nextProps.locale) {
       this.loadLocale(nextProps.locale);
     }
   }
 
   async loadLocale(locale) {
-    await Wrapper.loadLocaleData(locale);
-    this.props.setUsedLocale(getAvailableLocale(locale));
+    const id = await Wrapper.loadLanguage(locale);
+    if (!id) {
+      return;
+    }
+
+    this.props.setUsedLocale(id);
   }
 
   handleMenuItemClick(key) {
@@ -213,12 +228,16 @@ export default class Wrapper extends React.PureComponent {
   }
 
   render() {
-    const { user, usedLocale, locale } = this.props;
+    const { user, locale } = this.props;
+
+    const language = findLanguage(locale);
+
+    if (!language) return <Loading />;
 
     return (
-      <IntlProvider key={usedLocale} locale={usedLocale} messages={global.translations}>
+      <IntlProvider key={language.id} locale={language.localeData} messages={global.translations}>
         <LocaleProvider locale={enUS}>
-          <Layout data-dir={getLocaleDirection(getAvailableLocale(locale))}>
+          <Layout data-dir={language && language.rtl ? 'rtl' : 'ltr'}>
             <Layout.Header style={{ position: 'fixed', width: '100vw', zIndex: 1050 }}>
               <Topnav username={user.name} onMenuItemClick={this.handleMenuItemClick} />
             </Layout.Header>
